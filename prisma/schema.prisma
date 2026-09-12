@@ -11,13 +11,25 @@ datasource db {
 }
 
 model Business {
-  id        String    @id @default(uuid())
-  name      String
-  services      Service[]
-  documents     Document[]
-  conversations Conversation[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                    String         @id @default(uuid())
+  name                  String
+  services              Service[]
+  documents             Document[]
+  conversations         Conversation[]
+  users                 User[]
+  evolutionInstanceName String?        @unique
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+}
+
+model User {
+  id         String   @id
+  email      String   @unique
+  name       String
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Service {
@@ -27,7 +39,7 @@ model Service {
   durationInMinutes Int
   price             Float
   businessId        String
-  business          Business @relation(fields: [businessId], references: [id])
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
@@ -37,7 +49,7 @@ model Document {
   filename   String
   storageUrl String
   businessId String
-  business   Business        @relation(fields: [businessId], references: [id])
+  business   Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   chunks     DocumentChunk[]
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
@@ -48,7 +60,7 @@ model DocumentChunk {
   content    String
   embedding  Unsupported("vector(384)")
   documentId String
-  document   Document @relation(fields: [documentId], references: [id])
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }
 
 model Conversation {
@@ -59,7 +71,7 @@ model Conversation {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  business    Business  @relation(fields: [businessId], references: [id])
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   messages    Message[]
 }
 
@@ -70,5 +82,5 @@ model Message {
   content        String       @db.Text
   createdAt      DateTime     @default(now())
 
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 }
