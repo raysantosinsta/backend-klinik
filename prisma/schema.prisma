@@ -13,10 +13,11 @@ datasource db {
 model Business {
   id        String    @id @default(uuid())
   name      String
-  services  Service[]
-  documents Document[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  services      Service[]
+  documents     Document[]
+  conversations Conversation[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model Service {
@@ -48,4 +49,26 @@ model DocumentChunk {
   embedding  Unsupported("vector(384)")
   documentId String
   document   Document @relation(fields: [documentId], references: [id])
+}
+
+model Conversation {
+  id          String    @id @default(uuid())
+  businessId  String
+  clientPhone String    
+  status      String    @default("BOT") // "BOT" ou "HUMAN"
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  business    Business  @relation(fields: [businessId], references: [id])
+  messages    Message[]
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  role           String       // "user" ou "assistant"
+  content        String       @db.Text
+  createdAt      DateTime     @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
 }
