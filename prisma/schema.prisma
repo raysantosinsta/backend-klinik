@@ -1,0 +1,51 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [vector]
+}
+
+model Business {
+  id        String    @id @default(uuid())
+  name      String
+  services  Service[]
+  documents Document[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Service {
+  id                String   @id @default(uuid())
+  name              String
+  description       String?
+  durationInMinutes Int
+  price             Float
+  businessId        String
+  business          Business @relation(fields: [businessId], references: [id])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Document {
+  id         String          @id @default(uuid())
+  filename   String
+  storageUrl String
+  businessId String
+  business   Business        @relation(fields: [businessId], references: [id])
+  chunks     DocumentChunk[]
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+}
+
+model DocumentChunk {
+  id         String   @id @default(uuid())
+  content    String
+  embedding  Unsupported("vector(384)")
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+}
