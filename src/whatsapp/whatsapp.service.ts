@@ -167,7 +167,7 @@ export class WhatsappService {
 
       if (conversation.status === 'HUMAN') return;
 
-      const aiResult = await this.chatService.processMessage(business.id, text);
+      const aiResult = await this.chatService.processMessage(business.id, conversation.id, text);
       const answer = aiResult.answer;
 
       await this.prisma.message.create({
@@ -179,6 +179,54 @@ export class WhatsappService {
           where: { id: conversation.id },
           data: { status: 'HUMAN' },
         });
+      }
+
+      if (aiResult.extractedData && aiResult.extractedData.isComplete) {
+        try {
+          const serviceName = aiResult.extractedData.service || '';
+          const service = await this.prisma.service.findFirst({
+            where: { businessId: business.id, name: { contains: serviceName, mode: 'insensitive' } }
+          });
+          
+          if (service) {
+            let appointmentDate = new Date();
+            if (aiResult.extractedData.date) {
+              const parsedDate = new Date(aiResult.extractedData.date);
+              if (!isNaN(parsedDate.getTime())) {
+                appointmentDate = parsedDate;
+              }
+            }
+            const clientName = aiResult.extractedData.name || 'Cliente';
+            await this.prisma.appointment.create({
+              data: {
+                businessId: business.id,
+                clientPhone: remoteJid,
+                clientName: clientName,
+                serviceId: service.id,
+                date: appointmentDate,
+                status: 'PENDING'
+              }
+            });
+
+            if (business.ownerPhone && business.evolutionInstanceName) {
+              const { evoUrl, evoKey } = this.getEvoConfig();
+              const dateStr = appointmentDate.toLocaleString('pt-BR');
+              const notificationText = `🚨 *Novo Agendamento Recebido!*\n\n👤 Cliente: ${clientName} (${remoteJid.replace('@s.whatsapp.net', '')})\n💆 Serviço: ${service.name}\n📅 Data: ${dateStr}\n\nAcesse o painel do Klinik OS para confirmar ou alterar!`;
+              
+              fetch(`${evoUrl}/message/sendText/${business.evolutionInstanceName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', apikey: evoKey },
+                body: JSON.stringify({
+                  number: business.ownerPhone,
+                  options: { delay: 1200, presence: 'composing' },
+                  text: notificationText,
+                }),
+              }).catch(err => console.error('Erro ao notificar proprietário:', err));
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao salvar agendamento:", err);
+        }
       }
 
       const { evoUrl, evoKey } = this.getEvoConfig();

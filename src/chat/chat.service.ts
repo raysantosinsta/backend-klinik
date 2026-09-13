@@ -8,7 +8,7 @@ import { z } from "zod";
 export class ChatService {
   constructor(private prisma: PrismaService) {}
 
-  async processMessage(businessId: string, message: string) {
+  async processMessage(businessId: string, conversationId: string | null, message: string) {
     // 1. Vetorizar a pergunta do usuário com o modelo local (Xenova)
     console.log('Vetorizando pergunta do usuário...');
     const extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
@@ -38,6 +38,25 @@ export class ChatService {
     const context = chunks.map((c) => c.content).join('\n\n');
     console.log('Contexto recuperado:', context);
 
+    // 2.5. Buscar Serviços Disponíveis
+    const services = await this.prisma.service.findMany({
+      where: { businessId }
+    });
+    const servicesContext = services.length > 0 
+      ? "Serviços disponíveis: " + services.map(s => `${s.name} (R$ ${s.price}, ${s.durationInMinutes}min)`).join(', ')
+      : "Nenhum serviço cadastrado.";
+
+    // 2.6 Buscar Histórico de Mensagens
+    let historyContext = "";
+    if (conversationId) {
+      const history = await this.prisma.message.findMany({
+        where: { conversationId },
+        orderBy: { createdAt: 'desc' },
+        take: 6
+      });
+      historyContext = history.reverse().map(m => `${m.role === 'user' ? 'Cliente' : 'Assistente'}: ${m.content}`).join('\n');
+    }
+
     // 3. Chamar o LLM (Groq) para gerar a resposta
     console.log('Gerando resposta com Groq (Llama 3)...');
     try {
@@ -48,20 +67,33 @@ export class ChatService {
         maxTokens: 800, // Evita erro de limite de tokens (OTPM) no tier gratuito
       });
 
-      const prompt = `Você é um assistente virtual de uma clínica de estética.
-Responda à pergunta do cliente de forma educada, humanizada e clara usando EXCLUSIVAMENTE as informações do contexto abaixo.
-REGRA CRÍTICA: Se o cliente perguntar sobre qualquer serviço, produto, preço ou informação que NÃO ESTEJA explicitamente listado no contexto, você DEVE definir 'needsHumanFallback' como true. Não tente deduzir ou responder negativamente (ex: "não vendemos comida"). Apenas acione o fallback.
+      const prompt = `Você é um assistente virtual de uma clínica.
+Responda à pergunta de forma educada e clara usando EXCLUSIVAMENTE as informações do contexto abaixo.
+Se o cliente quiser agendar um serviço, você deve coletar: Nome, Serviço desejado, Data e Horário (em horário comercial).
+Se faltar alguma dessas informações, pergunte na sua resposta. Se você já tem todas, marque isComplete como true.
 
-Contexto da Clínica:
+Contexto da Clínica (Base de Conhecimento):
 ${context}
 
-Pergunta do Cliente:
+${servicesContext}
+
+Histórico da Conversa Recente:
+${historyContext}
+
+Mensagem Atual do Cliente:
 ${message}`;
 
       const structuredLlm = llm.withStructuredOutput(
         z.object({
-          answer: z.string().describe("A resposta para o cliente. Deixe em branco se acionar o fallback."),
-          needsHumanFallback: z.boolean().describe("true se a resposta exata não estiver no contexto, exigindo transbordo para o humano.")
+          answer: z.string().describe("Sua resposta ou pergunta ao cliente para prosseguir com o atendimento."),
+          needsHumanFallback: z.boolean().describe("true se a resposta não estiver no contexto, exigindo transbordo para o humano."),
+          intent: z.enum(["FAQ", "SCHEDULING", "OTHER"]).describe("Intenção do cliente."),
+          extractedData: z.object({
+            name: z.string().nullable().describe("Nome do cliente, se já informado."),
+            service: z.string().nullable().describe("Nome do serviço desejado, se já informado."),
+            date: z.string().nullable().describe("Data e hora desejada no formato ISO, se já informada e combinada."),
+            isComplete: z.boolean().describe("Verdadeiro APENAS se o nome, serviço e data/hora já foram combinados e confirmados.")
+          }).optional()
         }),
         { name: "generate_response" }
       );
@@ -72,7 +104,8 @@ ${message}`;
         answer: aiResponse.needsHumanFallback 
           ? "Desculpe, não sei responder a essa pergunta com as informações que tenho no momento. Gostaria de falar com um atendente humano?" 
           : aiResponse.answer,
-        fallback: aiResponse.needsHumanFallback
+        fallback: aiResponse.needsHumanFallback,
+        extractedData: aiResponse.extractedData
       };
     } catch (e) {
       console.error('Erro ao chamar Gemini:', e);

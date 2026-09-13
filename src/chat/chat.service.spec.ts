@@ -30,6 +30,12 @@ describe('ChatService', () => {
 
   const mockPrismaService = {
     $queryRaw: jest.fn(),
+    service: {
+      findMany: jest.fn(),
+    },
+    message: {
+      findMany: jest.fn(),
+    }
   };
 
   beforeEach(async () => {
@@ -56,7 +62,7 @@ describe('ChatService', () => {
     it('should return fallback true if no context chunks are found', async () => {
       mockPrismaService.$queryRaw.mockResolvedValue([]); // Nenhum chunk achado
 
-      const result = await service.processMessage('biz-1', 'Ola');
+      const result = await service.processMessage('biz-1', 'conv-1', 'Ola');
 
       expect(result.fallback).toBe(true);
       expect(result.answer).toContain('não encontrei informações');
@@ -68,7 +74,10 @@ describe('ChatService', () => {
         { content: 'Chunk 2', similarity: 0.8 }
       ]);
 
-      const result = await service.processMessage('biz-1', 'Ola');
+      mockPrismaService.service.findMany.mockResolvedValue([{ name: 'Limpeza', price: 100, durationInMinutes: 60 }]);
+      mockPrismaService.message.findMany.mockResolvedValue([]);
+
+      const result = await service.processMessage('biz-1', 'conv-1', 'Ola');
 
       expect(mockPrismaService.$queryRaw).toHaveBeenCalled();
       expect(result.fallback).toBe(false);
@@ -86,7 +95,10 @@ describe('ChatService', () => {
         })
       }));
 
-      const result = await service.processMessage('biz-1', 'Quanto custa a Ferrari?');
+      mockPrismaService.service.findMany.mockResolvedValue([]);
+      mockPrismaService.message.findMany.mockResolvedValue([]);
+
+      const result = await service.processMessage('biz-1', 'conv-1', 'Quanto custa a Ferrari?');
 
       expect(result.fallback).toBe(true);
       expect(result.answer).toContain('Gostaria de falar com um atendente humano');
@@ -102,7 +114,10 @@ describe('ChatService', () => {
         })
       }));
 
-      const result = await service.processMessage('biz-1', 'Ola');
+      mockPrismaService.service.findMany.mockResolvedValue([]);
+      mockPrismaService.message.findMany.mockResolvedValue([]);
+
+      const result = await service.processMessage('biz-1', 'conv-1', 'Ola');
 
       expect(result.fallback).toBe(true);
       expect(result.answer).toContain('Ocorreu um erro interno');

@@ -147,7 +147,7 @@ describe('WhatsappService', () => {
       });
 
       expect(mockPrismaService.message.create).toHaveBeenCalledTimes(2); // user msg and assistant msg
-      expect(mockChatService.processMessage).toHaveBeenCalledWith('biz-1', 'Ola');
+      expect(mockChatService.processMessage).toHaveBeenCalledWith('biz-1', 'conv-1', 'Ola');
       expect(global.fetch).toHaveBeenCalledWith('http://localhost:8080/message/sendText/bot-1', expect.any(Object));
     });
   });

@@ -17,7 +17,9 @@ model Business {
   documents             Document[]
   conversations         Conversation[]
   users                 User[]
+  appointments          Appointment[]
   evolutionInstanceName String?        @unique
+  ownerPhone            String?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 }
@@ -40,6 +42,7 @@ model Service {
   price             Float
   businessId        String
   business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  appointments      Appointment[]
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
@@ -83,4 +86,21 @@ model Message {
   createdAt      DateTime     @default(now())
 
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model Appointment {
+  id          String   @id @default(uuid())
+  clientName  String
+  clientPhone String
+  date        DateTime
+  status      String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED
+  
+  serviceId   String
+  service     Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

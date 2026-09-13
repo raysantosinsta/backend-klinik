@@ -6,7 +6,7 @@ export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Post()
-  async handleChat(@Body() body: { businessId: string; message: string }) {
-    return this.chatService.processMessage(body.businessId, body.message);
+  async processMessage(@Body() body: { businessId: string; message: string }) {
+    return this.chatService.processMessage(body.businessId, null, body.message);
   }
 }
