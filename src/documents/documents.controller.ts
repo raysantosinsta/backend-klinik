@@ -1,4 +1,4 @@
-import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestException } from '@nestjs/common';
+import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestException, Get, Param, Delete } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentsService } from './documents.service';
 
@@ -20,5 +20,15 @@ export class DocumentsController {
     }
 
     return this.documentsService.upload(file, businessId);
+  }
+
+  @Get(':businessId')
+  async listDocuments(@Param('businessId') businessId: string) {
+    return this.documentsService.listDocuments(businessId);
+  }
+
+  @Delete(':id')
+  async deleteDocument(@Param('id') id: string) {
+    return this.documentsService.deleteDocument(id);
   }
 }

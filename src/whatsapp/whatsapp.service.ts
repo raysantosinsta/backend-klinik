@@ -52,7 +52,25 @@ export class WhatsappService {
     const { evoUrl, evoKey } = this.getEvoConfig();
     const instanceName = business.evolutionInstanceName || `bot-${businessId}`;
 
-    // 1. Cria a instância
+    // 1. Verifica se a instância já existe para tentar apenas conectar e pegar o QR Code novo
+    if (business.evolutionInstanceName) {
+      const connectRes = await fetch(`${evoUrl}/instance/connect/${instanceName}`, {
+        method: 'GET',
+        headers: { apikey: evoKey }
+      });
+      
+      if (connectRes.ok) {
+        const connectData = await connectRes.json();
+        if (connectData?.base64 || connectData?.qrcode) {
+          return { 
+            success: true, 
+            qrcode: connectData?.base64 || connectData?.qrcode?.base64 || connectData?.qrcode 
+          };
+        }
+      }
+    }
+
+    // 2. Se não existir ou falhar, cria a instância do zero
     const createRes = await fetch(`${evoUrl}/instance/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: evoKey },

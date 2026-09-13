@@ -94,4 +94,42 @@ export class DocumentsService {
 
     return document;
   }
+
+  async listDocuments(businessId: string) {
+    return this.prisma.document.findMany({
+      where: { businessId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        filename: true,
+        storageUrl: true,
+        createdAt: true,
+      }
+    });
+  }
+
+  async deleteDocument(id: string) {
+    const document = await this.prisma.document.findUnique({ where: { id } });
+    if (!document) {
+      throw new Error("Documento não encontrado");
+    }
+
+    // A URL pública é https://<url>/storage/v1/object/public/pdfs/<businessId>/<filename>
+    // Precisamos extrair o path para deletar no supabase
+    try {
+      const urlObj = new URL(document.storageUrl);
+      const pathParts = urlObj.pathname.split('/public/pdfs/');
+      if (pathParts.length > 1) {
+        const filePath = pathParts[1];
+        await this.supabase.storage.from('pdfs').remove([filePath]);
+      }
+    } catch (err) {
+      console.error('Erro ao deletar arquivo do storage:', err);
+    }
+
+    // O Prisma deleta em cascata os chunks gerados devido ao onDelete: Cascade
+    await this.prisma.document.delete({ where: { id } });
+    
+    return { success: true };
+  }
 }
