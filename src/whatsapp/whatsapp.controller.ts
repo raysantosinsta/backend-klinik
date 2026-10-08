@@ -1,9 +1,15 @@
 import { Controller, Post, Body, Get, Param, Delete } from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
 
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+
 @Controller('whatsapp')
 export class WhatsappController {
-  constructor(private readonly whatsappService: WhatsappService) {}
+  constructor(
+    private readonly whatsappService: WhatsappService,
+    @InjectQueue('whatsapp_messages') private readonly whatsappQueue: Queue
+  ) {}
 
   @Post('webhook')
   async handleWebhook(@Body() payload: any) {
@@ -12,10 +18,11 @@ export class WhatsappController {
     console.log('Instance:', payload?.instance);
     
     if (payload?.event === 'messages.upsert' || payload?.event === 'MESSAGES_UPSERT') {
-      await this.whatsappService.processMessage(payload.instance, payload.data);
-    } else if (payload?.event === 'messages.upsert') {
-      // Caso seja minúsculo, mantemos para compatibilidade
-      await this.whatsappService.processMessage(payload.instance, payload.data);
+      await this.whatsappQueue.add('process_message', {
+        instance: payload.instance,
+        data: payload.data
+      });
+      console.log('Mensagem enfileirada para processamento no BullMQ');
     } else {
       console.log('Evento ignorado:', payload?.event);
     }

@@ -28,14 +28,10 @@ export class ChatService {
       LIMIT 3;
     `;
 
-    if (!chunks || chunks.length === 0) {
-      return {
-        answer: "Desculpe, não encontrei informações sobre isso na base de conhecimento da clínica.",
-        fallback: true
-      };
+    let context = "";
+    if (chunks && chunks.length > 0) {
+      context = chunks.map((c) => c.content).join('\n\n');
     }
-
-    const context = chunks.map((c) => c.content).join('\n\n');
     console.log('Contexto recuperado:', context);
 
     // 2.5. Buscar Serviços Disponíveis
@@ -68,7 +64,8 @@ export class ChatService {
       });
 
       const prompt = `Você é um assistente virtual de uma clínica.
-Responda à pergunta de forma educada e clara usando EXCLUSIVAMENTE as informações do contexto abaixo.
+Seja educado e prestativo. Você pode responder normalmente a cumprimentos básicos e saudações.
+Para tirar dúvidas sobre a clínica, use EXCLUSIVAMENTE as informações do contexto abaixo.
 Se o cliente quiser agendar um serviço, você deve coletar: Nome, Serviço desejado, Data e Horário (em horário comercial).
 Se faltar alguma dessas informações, pergunte na sua resposta. Se você já tem todas, marque isComplete como true.
 
