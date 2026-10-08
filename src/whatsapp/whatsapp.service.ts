@@ -33,15 +33,15 @@ export class WhatsappService {
       });
       if (response.ok) {
         const data = await response.json();
-        return { 
+        return {
           connected: data?.instance?.state === 'open',
-          status: data?.instance?.state 
+          status: data?.instance?.state
         };
       }
     } catch (e) {
       console.error('Erro ao verificar status:', e);
     }
-    
+
     return { connected: false, status: 'Erro na verificação' };
   }
 
@@ -64,16 +64,16 @@ export class WhatsappService {
         method: 'GET',
         headers: { apikey: evoKey }
       });
-      
+
       console.log(`[connect] Status da resposta de connect: ${connectRes.status}`);
       if (connectRes.ok) {
         const connectData = await connectRes.json();
         console.log(`[connect] Resposta recebida da API:`, JSON.stringify(connectData).substring(0, 100) + '...');
         if (connectData?.base64 || connectData?.qrcode) {
           console.log(`[connect] QR Code encontrado na resposta.`);
-          return { 
-            success: true, 
-            qrcode: connectData?.base64 || connectData?.qrcode?.base64 || connectData?.qrcode 
+          return {
+            success: true,
+            qrcode: connectData?.base64 || connectData?.qrcode?.base64 || connectData?.qrcode
           };
         } else {
           console.log(`[connect] QR Code NÃO encontrado na resposta.`);
@@ -110,10 +110,10 @@ export class WhatsappService {
     }
 
     // 3. Configura o Webhook
-    console.log(`[connect] Configurando Webhook para a instância...`);
+    console.log(`[connect] Configurando Webhook para a instância...bora`);
     const baseUrl = process.env.WEBHOOK_URL || 'http://host.docker.internal:3001';
     const webhookUrl = `${baseUrl}/whatsapp/webhook`;
-    
+
     console.log(`[connect] URL do Webhook será: ${webhookUrl}`);
     const webhookRes = await fetch(`${evoUrl}/webhook/set/${instanceName}`, {
       method: 'POST',
@@ -135,9 +135,9 @@ export class WhatsappService {
     }
 
     console.log(`[connect] Conexão/Criação finalizada com sucesso.`);
-    return { 
-      success: true, 
-      qrcode: createData?.qrcode?.base64 || createData?.qrcode 
+    return {
+      success: true,
+      qrcode: createData?.qrcode?.base64 || createData?.qrcode
     };
   }
 
@@ -201,20 +201,20 @@ export class WhatsappService {
       }
 
       // O WhatsApp e a Evolution API v2 às vezes enviam o ID em remoteJidAlt quando remoteJid é um @lid
-      const remoteJid = (key.remoteJid?.includes('@lid') && key.remoteJidAlt) 
-                        ? key.remoteJidAlt 
+      const remoteJid = (key.remoteJid?.includes('@lid') && key.remoteJidAlt)
+                        ? key.remoteJidAlt
                         : key.remoteJid;
 
       if (!remoteJid) {
         console.log('⚠️ remoteJid não encontrado.');
         return;
       }
-      
+
       const text = message.conversation || message.extendedTextMessage?.text;
       if (!text) {
         console.log('⚠️ Texto não encontrado na mensagem.');
         console.log('Conteúdo da mensagem:', JSON.stringify(message, null, 2));
-        return; 
+        return;
       }
 
       console.log(`✅ Mensagem recebida de ${remoteJid}: "${text}"`);
@@ -272,7 +272,7 @@ export class WhatsappService {
           const service = await this.prisma.service.findFirst({
             where: { businessId: business.id, name: { contains: serviceName, mode: 'insensitive' } }
           });
-          
+
           if (service) {
             let appointmentDate = new Date();
             if (aiResult.extractedData.date) {
@@ -297,7 +297,7 @@ export class WhatsappService {
               const { evoUrl, evoKey } = this.getEvoConfig();
               const dateStr = appointmentDate.toLocaleString('pt-BR');
               const notificationText = `🚨 *Novo Agendamento Recebido!*\n\n👤 Cliente: ${clientName} (${remoteJid.replace('@s.whatsapp.net', '')})\n💆 Serviço: ${service.name}\n📅 Data: ${dateStr}\n\nAcesse o painel do Klinik OS para confirmar ou alterar!`;
-              
+
               fetch(`${evoUrl}/message/sendText/${business.evolutionInstanceName}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', apikey: evoKey },
@@ -315,7 +315,7 @@ export class WhatsappService {
       }
 
       const { evoUrl, evoKey } = this.getEvoConfig();
-      
+
       try {
         await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
           method: 'POST',
@@ -331,6 +331,31 @@ export class WhatsappService {
       }
     } catch (error) {
       console.error('Erro ao processar mensagem do Evolution API:', error);
+    }
+  }
+
+  async sendMessage(instanceName: string, remoteJid: string, text: string) {
+    const { evoUrl, evoKey } = this.getEvoConfig();
+    try {
+      const response = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: evoKey },
+        body: JSON.stringify({
+          number: remoteJid,
+          options: { delay: 1200, presence: 'composing' },
+          text: text,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erro ao enviar mensagem: ${response.status} - ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (err) {
+      console.error('Falha ao enviar requisição HTTP para o Evolution API no sendMessage:', err);
+      throw err;
     }
   }
 }
