@@ -110,9 +110,10 @@ export class WhatsappService {
     }
 
     // 3. Configura o Webhook
-    console.log(`[connect] Configurando Webhook para a instância...bora`);
     const baseUrl = process.env.WEBHOOK_URL || 'http://host.docker.internal:3001';
-    const webhookUrl = `${baseUrl}/whatsapp/webhook`;
+    const webhookUrl = baseUrl.endsWith('/whatsapp/webhook')
+      ? baseUrl
+      : `${baseUrl.replace(/\/+$/, '')}/whatsapp/webhook`;
 
     console.log(`[connect] URL do Webhook será: ${webhookUrl}`);
     const webhookRes = await fetch(`${evoUrl}/webhook/set/${instanceName}`, {
