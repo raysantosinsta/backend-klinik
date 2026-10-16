@@ -1,12 +1,13 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 function getSanitizedDbUrl(): string {
   let url = process.env.DATABASE_URL || '';
   if (!url) return url;
 
-  // 1. Redireciona host direto do Supabase (IPv6) para o Pooler IPv4 (aws-0-us-east-1.pooler.supabase.com)
-  // pois o Render não tem saída IPv6 por padrão
+  // Redireciona host direto do Supabase (IPv6) para o Pooler IPv4 (aws-0-us-east-1.pooler.supabase.com)
   if (url.includes('.supabase.co:5432')) {
     url = url.replace(
       /db\.[^.]+\.supabase\.co:5432/,
@@ -17,7 +18,7 @@ function getSanitizedDbUrl(): string {
     }
   }
 
-  // 2. Se a senha tiver o '@' cru (ex: Blessedhr10@5750@aws-0...), quebra o parser do Prisma
+  // Se a senha tiver o '@' cru, corrige para '%40'
   const atParts = url.split('@');
   if (atParts.length > 2) {
     const hostAndQuery = atParts.pop();
@@ -25,40 +26,47 @@ function getSanitizedDbUrl(): string {
     url = `${userAndPass}@${hostAndQuery}`;
   }
 
-  // 3. Garante que os parâmetros de SSL para Linux/Render estejam sempre presentes
-  if (!url.includes('sslmode=')) {
-    url += (url.includes('?') ? '&' : '?') + 'sslmode=require';
-  }
-  if (!url.includes('sslaccept=')) {
-    url += '&sslaccept=accept_invalid_certs';
-  }
-
   return url;
 }
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit {
-  constructor() {
-    const finalUrl = getSanitizedDbUrl();
-    super({
-      datasources: {
-        db: {
-          url: finalUrl,
-        },
-      },
-    });
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  private pool: Pool;
 
-    const masked = finalUrl.replace(/:([^:@]+)@/, ':****@');
-    console.log('🔌 [PrismaService] Conectando ao banco:', masked);
+  constructor() {
+    const connectionString = getSanitizedDbUrl();
+    const pool = new Pool({
+      connectionString,
+      ssl: {
+        rejectUnauthorized: false,
+      },
+      max: 10,
+    });
+    const adapter = new PrismaPg(pool);
+
+    super({
+      adapter,
+    } as any);
+
+    this.pool = pool;
+    const masked = connectionString.replace(/:([^:@]+)@/, ':****@');
+    console.log('🔌 [PrismaService] Conectado via pg Driver Adapter (Node TLS):', masked);
   }
 
   async onModuleInit() {
     try {
       await this.$connect();
-      console.log('✅ Prisma conectado ao PostgreSQL com sucesso.');
-    } catch (error) {
-      console.error('⚠️ Aviso: Falha inicial ao conectar Prisma no boot:', error?.message || error);
-      console.error('O Prisma tentará reconectar automaticamente nas próximas consultas.');
+      console.log('✅ Prisma conectado ao PostgreSQL via Driver Adapter com sucesso.');
+    } catch (error: any) {
+      console.error('⚠️ Falha ao conectar Prisma no boot:', error?.message || error);
+    }
+  }
+
+  async onModuleDestroy() {
+    await this.$disconnect();
+    if (this.pool) {
+      await this.pool.end();
     }
   }
 }
+
