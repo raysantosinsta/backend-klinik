@@ -112,4 +112,64 @@ ${message}`;
       };
     }
   }
+
+  async getContext(businessIdOrInstance: string, query: string) {
+    const business = await this.prisma.business.findFirst({
+      where: {
+        OR: [
+          { id: businessIdOrInstance },
+          { evolutionInstanceName: businessIdOrInstance },
+        ],
+      },
+    });
+
+    if (!business) {
+      return {
+        businessName: 'Clínica',
+        context: '',
+        services: '',
+      };
+    }
+
+    const businessId = business.id;
+
+    console.log(`[RAG Context] Buscando documentos para empresa: ${business.name} (${businessId})...`);
+
+    let context = '';
+    try {
+      const extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+      const output = await extractor(query, { pooling: 'mean', normalize: true });
+      const vector = Array.from(output.data);
+      const vectorString = `[${vector.join(',')}]`;
+
+      const chunks: any[] = await this.prisma.$queryRaw`
+        SELECT "content", 1 - ("embedding" <=> ${vectorString}::vector) as similarity
+        FROM "DocumentChunk"
+        WHERE "documentId" IN (
+          SELECT "id" FROM "Document" WHERE "businessId" = ${businessId}
+        )
+        ORDER BY "embedding" <=> ${vectorString}::vector
+        LIMIT 4;
+      `;
+
+      if (chunks && chunks.length > 0) {
+        context = chunks.map((c) => c.content).join('\n\n');
+      }
+    } catch (err) {
+      console.error('[RAG Context] Erro ao extrair embeddings/chunks:', err);
+    }
+
+    const services = await this.prisma.service.findMany({
+      where: { businessId },
+    });
+    const servicesContext = services.length > 0
+      ? services.map((s) => `- ${s.name}: R$ ${s.price} (duração: ${s.durationInMinutes} min)`).join('\n')
+      : 'Nenhum serviço específico listado no momento.';
+
+    return {
+      businessName: business.name,
+      context,
+      services: servicesContext,
+    };
+  }
 }

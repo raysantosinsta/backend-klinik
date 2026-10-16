@@ -9,4 +9,9 @@ export class ChatController {
   async processMessage(@Body() body: { businessId: string; message: string }) {
     return this.chatService.processMessage(body.businessId, null, body.message);
   }
+
+  @Post('context')
+  async getContext(@Body() body: { businessId: string; query: string }) {
+    return this.chatService.getContext(body.businessId, body.query);
+  }
 }

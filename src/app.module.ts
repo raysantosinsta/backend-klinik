@@ -19,10 +19,28 @@ import { ExpressAdapter } from '@bull-board/express';
 @Module({
   imports: [
     PrometheusModule.register(),
-    BullModule.forRoot({
-      connection: {
-        host: 'localhost',
-        port: 6379,
+    BullModule.forRootAsync({
+      useFactory: () => {
+        const redisUrl = process.env.REDIS_URL;
+        if (redisUrl) {
+          const parsed = new URL(redisUrl);
+          return {
+            connection: {
+              host: parsed.hostname,
+              port: Number(parsed.port),
+              username: parsed.username || undefined,
+              password: parsed.password || undefined,
+              maxRetriesPerRequest: null,
+            },
+          };
+        }
+        return {
+          connection: {
+            host: 'localhost',
+            port: 6379,
+            maxRetriesPerRequest: null,
+          },
+        };
       },
     }),
     BullBoardModule.forRoot({
