@@ -3,11 +3,14 @@ import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 
+// Permite certificados intermediários/self-signed do Supabase na nuvem
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 function getSanitizedDbUrl(): string {
   let url = process.env.DATABASE_URL || '';
   if (!url) return url;
 
-  // Redireciona host direto do Supabase (IPv6) para o Pooler IPv4 (aws-0-us-east-1.pooler.supabase.com)
+  // Redireciona host direto do Supabase (IPv6) para o Pooler IPv4
   if (url.includes('.supabase.co:5432')) {
     url = url.replace(
       /db\.[^.]+\.supabase\.co:5432/,
@@ -25,6 +28,9 @@ function getSanitizedDbUrl(): string {
     const userAndPass = atParts.join('%40');
     url = `${userAndPass}@${hostAndQuery}`;
   }
+
+  // Remove qualquer query parameter (ex: ?sslmode=require) que force o pg a sobrescrever rejectUnauthorized
+  url = url.split('?')[0];
 
   return url;
 }
