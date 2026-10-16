@@ -336,12 +336,15 @@ export class WhatsappService {
 
   async sendMessage(instanceName: string, remoteJid: string, text: string) {
     const { evoUrl, evoKey } = this.getEvoConfig();
+    const cleanNumber = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
+    console.log(`[WhatsappService] Enviando mensagem para ${cleanNumber} (instância: ${instanceName})...`);
+
     try {
       const response = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: evoKey },
         body: JSON.stringify({
-          number: remoteJid,
+          number: cleanNumber,
           options: { delay: 1200, presence: 'composing' },
           text: text,
         }),
@@ -349,12 +352,15 @@ export class WhatsappService {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`[WhatsappService] ❌ Erro ao enviar mensagem na Evolution API: ${response.status} - ${errorText}`);
         throw new Error(`Erro ao enviar mensagem: ${response.status} - ${errorText}`);
       }
 
-      return await response.json();
+      const resData = await response.json();
+      console.log(`[WhatsappService] ✅ Mensagem enviada com sucesso para ${cleanNumber}!`);
+      return resData;
     } catch (err) {
-      console.error('Falha ao enviar requisição HTTP para o Evolution API no sendMessage:', err);
+      console.error('[WhatsappService] Falha na requisição para o Evolution API no sendMessage:', err);
       throw err;
     }
   }
