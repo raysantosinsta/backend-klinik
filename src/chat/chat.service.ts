@@ -28,17 +28,21 @@ export class ChatService {
       LIMIT 3;
     `;
 
-    let context = "";
-    if (chunks && chunks.length > 0) {
-      context = chunks.map((c) => c.content).join('\n\n');
+    if (!chunks || chunks.length === 0) {
+      return {
+        answer: "Desculpe, não encontrei informações na base de conhecimento para responder à sua dúvida. Gostaria de falar com um atendente humano?",
+        fallback: true
+      };
     }
+
+    const context = chunks.map((c) => c.content).join('\n\n');
     console.log('Contexto recuperado:', context);
 
     // 2.5. Buscar Serviços Disponíveis
     const services = await this.prisma.service.findMany({
       where: { businessId }
     });
-    const servicesContext = services.length > 0 
+    const servicesContext = services && services.length > 0 
       ? "Serviços disponíveis: " + services.map(s => `${s.name} (R$ ${s.price}, ${s.durationInMinutes}min)`).join(', ')
       : "Nenhum serviço cadastrado.";
 
@@ -50,7 +54,7 @@ export class ChatService {
         orderBy: { createdAt: 'desc' },
         take: 6
       });
-      historyContext = history.reverse().map(m => `${m.role === 'user' ? 'Cliente' : 'Assistente'}: ${m.content}`).join('\n');
+      historyContext = (history || []).reverse().map(m => `${m.role === 'user' ? 'Cliente' : 'Assistente'}: ${m.content}`).join('\n');
     }
 
     // 3. Chamar o LLM (Groq) para gerar a resposta

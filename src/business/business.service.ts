@@ -20,6 +20,21 @@ export class BusinessService {
     });
   }
 
+  async updateGoogleSheetsId(id: string, googleSheetsId: string) {
+    const business = await this.prisma.business.findUnique({
+      where: { id },
+    });
+
+    if (!business) {
+      throw new NotFoundException('Negócio não encontrado');
+    }
+
+    return this.prisma.business.update({
+      where: { id },
+      data: { googleSheetsId },
+    });
+  }
+
   async getBusiness(id: string) {
     const business = await this.prisma.business.findUnique({
       where: { id },

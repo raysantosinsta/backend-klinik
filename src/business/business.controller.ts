@@ -17,4 +17,12 @@ export class BusinessController {
   ) {
     return this.businessService.updateOwnerPhone(id, body.ownerPhone);
   }
+
+  @Patch(':id/googleSheetsId')
+  async updateGoogleSheetsId(
+    @Param('id') id: string,
+    @Body() body: { googleSheetsId: string },
+  ) {
+    return this.businessService.updateGoogleSheetsId(id, body.googleSheetsId);
+  }
 }

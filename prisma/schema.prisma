@@ -21,6 +21,7 @@ model Business {
   appointments          Appointment[]
   evolutionInstanceName String?        @unique
   ownerPhone            String?
+  googleSheetsId        String?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 }

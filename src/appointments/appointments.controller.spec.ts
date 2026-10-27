@@ -8,6 +8,7 @@ describe('AppointmentsController', () => {
 
   const mockAppointmentsService = {
     findAll: jest.fn(),
+    create: jest.fn(),
     updateStatus: jest.fn(),
   };
 
@@ -36,6 +37,23 @@ describe('AppointmentsController', () => {
       mockAppointmentsService.findAll.mockResolvedValue([]);
       await controller.findAll('biz-1');
       expect(mockAppointmentsService.findAll).toHaveBeenCalledWith('biz-1');
+    });
+  });
+
+  describe('create', () => {
+    it('should call service create', async () => {
+      const dto = {
+        businessId: 'biz-1',
+        clientName: 'Ana',
+        clientPhone: '5511999999999',
+        serviceName: 'Botox',
+        date: '2026-10-28 14:00',
+      };
+      mockAppointmentsService.create.mockResolvedValue({ success: true });
+      const result = await controller.create(dto);
+
+      expect(mockAppointmentsService.create).toHaveBeenCalledWith(dto);
+      expect(result).toEqual({ success: true });
     });
   });
 

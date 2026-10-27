@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { AppointmentsService } from './appointments.service';
+import { CreateAppointmentDto } from './dto/create-appointment.dto';
 
 @Controller('appointments')
 export class AppointmentsController {
@@ -8,6 +9,11 @@ export class AppointmentsController {
   @Get(':businessId')
   async findAll(@Param('businessId') businessId: string) {
     return this.appointmentsService.findAll(businessId);
+  }
+
+  @Post()
+  async create(@Body() dto: CreateAppointmentDto) {
+    return this.appointmentsService.create(dto);
   }
 
   @Patch(':id/status')

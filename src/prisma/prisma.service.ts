@@ -41,9 +41,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   constructor() {
     const connectionString = getSanitizedDbUrl();
+    const isLocal = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
     const pool = new Pool({
       connectionString,
-      ssl: {
+      ssl: isLocal ? false : {
         rejectUnauthorized: false,
       },
       max: 10,
