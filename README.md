@@ -214,15 +214,15 @@ SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOi..."
 GROQ_API_KEY="gsk_..."
 
 # Gateway WhatsApp (Evolution API)
-EVOLUTION_API_URL="https://evolution-api-latest-jf6y.onrender.com"
-EVOLUTION_API_KEY="SuaSenhaSecreta123"
-WEBHOOK_URL="https://backend-klinik.onrender.com"
+EVOLUTION_API_URL=""
+EVOLUTION_API_KEY=""
+WEBHOOK_URL=""
 
 # Broker de Mensageria (Redis Cloud)
 REDIS_URL="redis://default:[PASS]@[HOST]:[PORT]"
 
 # Agente Cognitivo Python
-PYTHON_AGENT_URL="https://agente-klinik.onrender.com"
+PYTHON_AGENT_URL=""
 ```
 
 ---
