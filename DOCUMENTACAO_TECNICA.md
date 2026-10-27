@@ -1,399 +1,462 @@
-# Documentação Técnica Completa - Klinik OS
+# Documentação Técnica da Arquitetura - Klinik OS
 
-Bem-vindo à documentação técnica do **Klinik OS**, uma plataforma integrada de atendimento automatizado via WhatsApp e gerenciamento inteligente para clínicas, impulsionada por IA (RAG e LLM). 
+Bem-vindo à documentação técnica oficial e definitiva do **Klinik OS**, uma plataforma enterprise full-stack de atendimento autônomo, vendas consultivas e triagem inteligente para clínicas e empresas, impulsionada por **Inteligência Artificial Multiagente (LangGraph)**, **RAG Semântico (pgvector)**, **Filas Assíncronas (BullMQ)** e **Integrações ERP / Google Sheets**.
 
-Este documento detalha o funcionamento interno, arquitetura e fluxos de dados do sistema, servindo como guia definitivo para integração de novos desenvolvedores.
-
----
-
-## 1. Visão geral
-
-O Klinik OS é um sistema full-stack que visa otimizar o atendimento de clínicas de estética e saúde. O núcleo de valor do projeto é um **Assistente Virtual de Inteligência Artificial** (Bot) integrado ao WhatsApp. Este assistente é capaz de:
-- Tirar dúvidas dos clientes consumindo uma base de conhecimento da clínica (Documentos).
-- Apresentar serviços disponíveis e seus preços.
-- Capturar a intenção de agendamento.
-- Realizar "transbordo" (fallback) para um atendente humano quando não souber a resposta.
-
-O sistema possui uma interface administrativa (Dashboard) para gerenciar agendamentos, serviços, documentos de contexto (RAG) e configurar a integração com o WhatsApp.
+Este documento detalha a topologia do ecossistema, os microsserviços componentes, os fluxos de dados, a modelagem relacional/vetorial e as decisões de engenharia adotadas.
 
 ---
 
-## 2. Stack tecnológica
+## 1. Visão Geral do Sistema
 
-O projeto é moderno e utiliza tecnologias de ponta, focado na performance e uso de IA generativa.
+O Klinik OS é projetado para operar como o cérebro operacional e canal de atendimento automatizado via WhatsApp para empresas de saúde, estética e prestação de serviços.
 
-### Backend
-- **Framework:** NestJS (Node.js)
-- **Linguagem:** TypeScript
-- **Banco de Dados:** PostgreSQL
-- **ORM:** Prisma
-- **Vetorização e Busca Semântica:** Extensão `pgvector` no PostgreSQL
-- **IA/LLM:** `@langchain/groq` (Groq API, modelo Qwen)
-- **Embeddings Locais:** `@xenova/transformers` (modelo local `Xenova/all-MiniLM-L6-v2`)
-
-### Frontend
-- **Framework:** Next.js 16.3 (App Router)
-- **Linguagem:** TypeScript, React 19
-- **Estilização:** Tailwind CSS v4, Framer Motion
-- **Ícones:** Lucide React
-- **Autenticação:** Supabase JS
-
-### Infra e Integrações
-- **Mensageria WhatsApp:** Evolution API (via Webhooks)
-- **Containerização:** Docker (docker-compose para DB)
+### Pilares Fundamentais:
+1. **Atendimento Multiagente Especializado**: Substitui o modelo de prompt monolítico por um grafo supervisor com roteamento inteligente entre agentes de **Vendas Consultivas**, **Dúvidas & Políticas (RAG)** e **SAC / Reclamações**, além de **Transbordo Humano prioritário**.
+2. **Respostas Factuais sem Alucinações (RAG)**: Consulta documentos oficiais (tabelas de preços, normas, regras de devolução e políticas) vetorizados no PostgreSQL com extensão `pgvector`.
+3. **Resiliência e Desacoplamento via Filas (BullMQ + Redis)**: As mensagens recebidas do WhatsApp nunca travam o servidor HTTP; são imediatamente enfileiradas para processamento assíncrono.
+4. **Sincronização em Tempo Real com ERP / Planilhas**: Através de um Hub Centralizador Multi-Tenant (Google Apps Script / Webhooks), cada agendamento confirmado gera automaticamente uma linha formatada na planilha Google Sheets isolada daquela empresa.
+5. **Observabilidade e Telemetria em Produção**: Métricas em tempo real expostas via Prometheus (`/metrics`) no NestJS e no FastAPI, com agregação de logs estruturados (Winston + Loki) e monitoramento de fila com Bull Board (`/admin/queues`).
 
 ---
 
-## 3. Arquitetura
-
-A arquitetura do sistema segue um modelo Cliente-Servidor clássico aliado a uma arquitetura orientada a eventos para o processamento do WhatsApp.
+## 2. Stack Tecnológica Global
 
 ```text
-Cliente (Paciente no WhatsApp)
-   ↓ (Evolution API)
-Webhooks / Backend (NestJS)
-   ↓ (Geração de embeddings locais com Xenova)
-Busca Semântica (PgVector / Prisma)
-   ↓ (Montagem do Prompt RAG)
-Regras de Negócio & LLM (Groq Langchain)
-   ↓
-Banco de Dados (PostgreSQL)
-   ↓
-Dashboard Frontend (Next.js)
-   ↓ (Visualização e Gestão)
-Usuário (Administrador da Clínica)
+┌─────────────────────────────────────────────────────────────────────────┐
+│                               KLINIK OS                                 │
+├─────────────────────┬───────────────────────────┬───────────────────────┤
+│ Frontend (Next.js)  │ Backend Core (NestJS)     │ AI Agent (Python)     │
+│ React 19 / Turbopack│ TypeScript / Node.js      │ FastAPI / LangGraph   │
+│ Tailwind CSS v4     │ Prisma ORM / pg Driver    │ LangChain / ChatGroq  │
+│ Supabase Client     │ BullMQ & Bull Board       │ Prometheus & Loki     │
+├─────────────────────┼───────────────────────────┼───────────────────────┤
+│ Mensageria WhatsApp │ Dados & Vetores           │ Integrações Externas  │
+│ Evolution API v2    │ PostgreSQL 15 + pgvector  │ Google Sheets Hub GAS │
+│ Baileys Engine      │ Redis 7 (Broker Filas)    │ Groq NPUs (Llama/Qwen)│
+└─────────────────────┴───────────────────────────┴───────────────────────┘
 ```
 
-**Responsabilidades:**
-- **Frontend:** Camada de apresentação e gestão. Renderiza interfaces responsivas e gerencia a sessão de autenticação usando Supabase.
-- **Backend:** Centraliza a lógica de negócios, integração com o banco, processamento de RAG (Retrieval-Augmented Generation) e comunicação com a API do WhatsApp.
-- **Banco de Dados:** Armazena entidades estruturadas (Serviços, Agendamentos) e vetores não estruturados (Chunks de documentos).
+### Detalhamento por Camada:
+- **Frontend**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, Lucide Icons.
+- **Backend Core**: NestJS 11, Prisma ORM 5 com adapter `@prisma/adapter-pg`, BullMQ, `@bull-board/nestjs`, Axios / HttpService.
+- **Microserviço AI Agent**: Python 3.10+, FastAPI, LangGraph, LangChain Groq, Pydantic, Prometheus FastApi Instrumentator.
+- **Banco de Dados**: PostgreSQL 15 com extensão `pgvector` nativa (384 dimensões).
+- **Mensageria & Broker**: Redis 7 Alpine, Evolution API v2 (WhatsApp Baileys).
+- **Planilhas / ERP**: Google Apps Script Hub Centralizador Multi-Tenant via Webhook HTTP.
 
 ---
 
-## 4. Estrutura do projeto
+## 3. Arquitetura em Camadas e Diagrama de Topologia
 
-O repositório é um monorepo conceitual contendo pastas distintas para o frontend e backend.
+O sistema implementa uma arquitetura modular distribuída, onde a ingestão de eventos, o processamento de linguagem natural e a persistência de negócios são desacoplados.
 
-### `/backend`
-- `/src/whatsapp` - Recebimento de webhooks e conexão de instâncias.
-- `/src/chat` - Motor de Inteligência Artificial, embeddings e LLM.
-- `/src/documents` - Gerenciamento de documentos da clínica (fontes para RAG).
-- `/src/appointments` - Gestão de agendamentos.
-- `/src/services` - Catálogo de serviços da clínica.
-- `/src/users` e `/src/business` - Gestão de multi-tenancy e usuários.
-- `/prisma` - Schemas do banco de dados e migrações.
+### Diagrama Arquitetural Completo (Fluxo de Dados)
 
-### `/frontend`
-- `/app` - Estrutura de rotas do Next.js (App Router).
-- `/app/dashboard` - Área autenticada, contendo as páginas principais de gestão.
-- `/components` - Componentes React reutilizáveis (ex: `AuthProvider.tsx`, `DashboardHeader.tsx`).
-- `/lib` - Funções utilitárias e clientes (ex: Supabase client).
+```mermaid
+flowchart TD
+    subgraph CANAIS ["📱 Canal do Cliente"]
+        WA[WhatsApp do Paciente]
+    end
 
----
+    subgraph EVO ["⚡ Camada de Mensageria (Docker)"]
+        EVO_API[Evolution API v2<br/>Porta 8080]
+    end
 
-## 5. Frontend
+    subgraph BACKEND ["🛡️ Backend Core (NestJS - Porta 3001)"]
+        W_CTRL[WhatsappController<br/>POST /whatsapp/webhook]
+        QUEUE[(BullMQ Queue<br/>whatsapp_messages)]
+        WORKER[WhatsappProcessor<br/>Worker Assíncrono]
+        PRISMA[Prisma Service<br/>PostgreSQL]
+        W_SERV[WhatsappService<br/>Envio sendMessage]
+        WEBHOOKS[WebhooksService<br/>Disparo ERP/Sheets]
+        BOARD[Bull Board<br/>GET /admin/queues]
+    end
 
-O frontend é construído com Next.js focado em Server Components e App Router.
+    subgraph BROKER ["⚡ Message Broker"]
+        REDIS[(Redis 7<br/>Porta 6379)]
+    end
 
-### Páginas e rotas (Mapeamento Base)
+    subgraph AI_MICROSERVICE ["🧠 Microsserviço de IA (Python - Porta 8000)"]
+        FASTAPI[FastAPI Server<br/>POST /webhook]
+        SUPERVISOR{Supervisor Router<br/>LangGraph}
+        SALES[Agente Vendas<br/>Consultivo / SPIN]
+        FAQ[Agente Dúvidas<br/>RAG Anti-Alucinação]
+        SAC[Agente Reclamações<br/>SAC & Trocas]
+        HUMAN[Transbordo Humano<br/>Status HUMAN]
+        TOOLS[Tool Calling:<br/>Agenda, Score, RAG, Fechar Pedido]
+    end
 
-| Rota | Acesso | Função |
-|---|---|---|
-| `/` | Público | Landing Page / Login (Inferido) |
-| `/dashboard` | Autenticado | Visão geral da clínica |
-| `/dashboard/appointments` | Autenticado | Gestão de agendamentos |
-| `/dashboard/services` | Autenticado | Catálogo de serviços |
-| `/dashboard/documents` | Autenticado | Base de conhecimento (Uploads RAG) |
-| `/dashboard/whatsapp` | Autenticado | QR Code / Conexão com Evolution API |
-| `/dashboard/chat-test` | Autenticado | Teste do bot internamente |
+    subgraph STORAGE ["🗄️ Camada de Persistência & Vetores"]
+        PG[(PostgreSQL 15 + pgvector<br/>Porta 5432)]
+    end
 
-### Componentes Chave
-- **`AuthProvider`**: Componente Client-Side que encapsula as rotas e injeta o contexto da sessão do Supabase, permitindo redirecionamentos e verificação de identidade.
-- **`DashboardHeader`**: Navegação global da área restrita.
+    subgraph EXTERNAL ["🌐 Serviços Externos & ERP"]
+        GROQ[Groq Cloud NPUs<br/>Inferência Ultra-rápida]
+        GAS[Google Sheets Hub<br/>Google Apps Script]
+        SHEET[(Planilha da Empresa<br/>Multi-Tenant)]
+    end
 
-### Comunicação com API e Estado
-O estado local costuma ser gerenciado via React Hooks padrão. A comunicação com o backend NestJS é feita através do protocolo HTTP padrão, provavelmente utilizando funções de fetch nativas do Next.js.
-> ⚠️ **Hipótese baseada na implementação**: A autenticação para as chamadas à API do NestJS é feita injetando o JWT do Supabase nos headers (`Authorization: Bearer <token>`).
+    subgraph FRONTEND ["💻 Painel Administrativo (Next.js - Porta 3000)"]
+        DASH[Dashboard Geral]
+        APPS[Gestão Agendamentos]
+        WA_PAGE[Conexão QR Code]
+        DEBUG[Depurador Multiagente]
+    end
 
----
+    %% Ligações
+    WA -->|Mensagem| EVO_API
+    EVO_API -->|POST Webhook| W_CTRL
+    W_CTRL -->|Enfileira Job| QUEUE
+    QUEUE -.->|Armazena| REDIS
+    REDIS -.->|Consome| WORKER
+    WORKER -->|1. Busca Business & Cria Conv/Msg| PRISMA
+    PRISMA --> PG
+    WORKER -->|2. Envia para IA| FASTAPI
+    FASTAPI --> SUPERVISOR
+    SUPERVISOR --> SALES & FAQ & SAC & HUMAN
+    SALES & FAQ & SAC --> TOOLS
+    TOOLS -->|Contexto RAG| PRISMA
+    TOOLS -->|Invocação LLM| GROQ
+    FASTAPI -->|3. Retorna Resposta & Intenção| WORKER
+    WORKER -->|4. Salva Msg Assistente no Banco| PRISMA
+    WORKER -->|5. Dispara Mensagem| W_SERV
+    W_SERV -->|POST /message/sendText| EVO_API
+    EVO_API -->|Entrega Mensagem| WA
 
-## 6. Backend
+    %% Disparo Sheets
+    TOOLS -.->|Fechar Agendamento| WEBHOOKS
+    WEBHOOKS -->|POST Payload com spreadsheetId| GAS
+    GAS -->|Append Linha| SHEET
 
-O backend NestJS segue o padrão arquitetural de módulos fortemente isolados.
-
-### Módulos Principais
-1. **WhatsappModule**: 
-   - Recebe eventos (`messages.upsert`) da Evolution API via Webhook.
-   - Fornece endpoints de controle de sessão (`connect`, `disconnect`, `status`).
-2. **ChatModule**:
-   - É o cérebro do sistema. O `ChatService` vetoriza mensagens de entrada, busca contexto relevante no PostgreSQL e estrutura um prompt para o modelo LLM extrair metadados e formular respostas.
-3. **PrismaModule**:
-   - Módulo global que exporta o `PrismaService` para interação com o banco de dados.
-
-### Fluxo de uma requisição de Chat via WhatsApp
-
-```text
-Request (Webhook: POST /whatsapp/webhook)
-↓
-WhatsappController
-↓
-WhatsappService (Verifica existência do Business/Sessão)
-↓
-ChatService (processMessage)
-↓
-Extractor (Xenova local - Converte mensagem em Vetor)
-↓
-PrismaService (Busca top 3 chunks de Documentos por similaridade via PgVector)
-↓
-PrismaService (Busca Serviços Ativos e Histórico Recente de Mensagens)
-↓
-Langchain (ChatGroq invoca o Qwen3.8-27b com Structured Output)
-↓
-Response formatada (Resposta textual ou pedido de transbordo)
-↓
-Evolution API (Envia a mensagem de volta para o cliente no WhatsApp)
+    %% Frontend
+    FRONTEND -->|REST API| BACKEND
 ```
 
 ---
 
-## 7. API
+## 4. O Microsserviço de IA Multiagente (Python LangGraph)
 
-### Endpoints Principais (Exemplos Mapeados)
+O diretório `ai_agent/` abriga o motor cognitivo autônomo, estruturado com **LangGraph** (StateGraph), permitindo decisões condicionais e orquestração determinística de ferramentas.
 
-#### `POST /whatsapp/webhook`
-**Objetivo:** Recebe payloads em tempo real das interações no WhatsApp disparadas pela Evolution API.
-**Autenticação:** Aberto (A Evolution API envia para este webhook).
-**Request:**
-```json
-{
-  "event": "messages.upsert",
-  "instance": "nome_instancia_clinica",
-  "data": { ... }
-}
+### 4.1. Grafo de Decisão (LangGraph Workflow)
+
+```mermaid
+stateDiagram-v2
+    [*] --> Supervisor_Router
+    
+    Supervisor_Router --> Sales_Agent : Intenção == VENDAS
+    Supervisor_Router --> FAQ_Agent : Intenção == DUVIDAS
+    Supervisor_Router --> Support_Agent : Intenção == RECLAMACAO
+    Supervisor_Router --> Human_Handoff : Intenção == HUMAN
+    
+    Sales_Agent --> Tools : Tool Call Detectada
+    FAQ_Agent --> Tools : Tool Call Detectada
+    Support_Agent --> Tools : Tool Call Detectada
+    
+    Tools --> Sales_Agent : Retorno da Tool
+    Tools --> FAQ_Agent : Retorno da Tool
+    Tools --> Support_Agent : Retorno da Tool
+    
+    Sales_Agent --> [*] : Conclusão
+    FAQ_Agent --> [*] : Conclusão
+    Support_Agent --> [*] : Conclusão
+    Human_Handoff --> [*] : Pausa e Notifica
 ```
-**Efeitos:** Processa a mensagem, atualiza o histórico na tabela `Message`, gera a resposta por IA e envia via Evolution API.
 
-#### `POST /whatsapp/connect/:businessId`
-**Objetivo:** Solicita a criação/conexão de uma instância de WhatsApp na Evolution API.
-**Retorna:** Status e (geralmente) o QR Code em base64 para o usuário ler.
+### 4.2. Os Especialistas e suas Personas:
 
-#### `DELETE /whatsapp/disconnect/:businessId`
-**Objetivo:** Desconecta e remove a sessão da Evolution API.
+1. **Supervisor Router (`router_llm`)**:
+   - Analisa o texto bruto do cliente e classifica deterministamente em 4 categorias:
+     - `VENDAS`: Demonstração de interesse em preços, contratação, agendamento de procedimento ou compra.
+     - `DUVIDAS`: Perguntas sobre funcionamento, localização, corpo clínico, formas de pagamento ou políticas.
+     - `RECLAMACAO`: Insatisfação, cancelamento de plano/contrato, pedidos de devolução ou suporte crítico.
+     - `HUMAN`: Pedido explícito para falar com uma pessoa ("quero falar com atendente", "humano", "falar com atendente").
+2. **Agente de Vendas Consultivas (`sales_agent`)**:
+   - Persona orientada a técnicas modernas de vendas (SPIN Selling e BANT).
+   - Investiga a necessidade do cliente, ancora o valor dos serviços, apresenta soluções e conduz ativamente ao agendamento/fechamento.
+3. **Agente de Dúvidas & FAQ (`faq_agent`)**:
+   - Conectado diretamente à ferramenta `consultar_base_conhecimento`.
+   - Lê trechos oficiais de manuais e regulamentos via busca semântica, respondendo com precisão matemática sem alucinar.
+4. **Agente de Suporte e SAC (`support_agent`)**:
+   - Atendimento acolhedor e resolutivo para pós-venda, esclarecimento sobre prazos de garantia e procedimentos de devolução.
+5. **Transbordo Humano (`human_handoff`)**:
+   - Ativa o sinalizador `human_intervention_needed = True`, alterando o status da conversa para `HUMAN` no PostgreSQL e suspendendo respostas automáticas da IA para aquele contato.
+
+### 4.3. Ferramentas Disponíveis (Tool Calling):
+- `consultar_base_conhecimento(pergunta)`: Executa busca semântica no NestJS (`/chat/context`) para obter trechos de documentos vetorizados no `pgvector`.
+- `consultar_disponibilidade_agenda(data)`: Avalia horários disponíveis para agendamento.
+- `calcular_score_lead(nivel_interesse, servico_escolhido)`: Qualifica e pontua o cliente no CRM interno.
+- `fechar_agendamento(nome_cliente, telefone, data, servico)`: Conclui a reserva, grava na tabela `Appointment` e despacha para a planilha Google Sheets vinculada.
 
 ---
 
-## 8. Banco de dados
+## 5. Resiliência e Filas Assíncronas (BullMQ)
 
-Modelo relacional PostgreSQL gerenciado pelo Prisma.
+Para suportar grandes picos de conversas simultâneas no WhatsApp sem gerar timeouts na Evolution API ou sobrecarregar a CPU com chamadas de LLM, o sistema utiliza **BullMQ** sobre **Redis**.
 
-### Principais Modelos / Tabelas
+### Funcionamento do Worker:
+1. **Ingestão Leve (Webhook)**: O `WhatsappController` recebe o evento `MESSAGES_UPSERT` da Evolution API e apenas enfileira o job `process_message` na fila `whatsapp_messages` (tempo de resposta < 15ms).
+2. **Worker Dedicado (`WhatsappProcessor`)**:
+   - Desacoplado da camada HTTP.
+   - Resolve o `Business` correspondente à instância WhatsApp.
+   - Busca ou cria a `Conversation` associada ao cliente (`clientPhone`).
+   - Grava a mensagem do usuário (`role: 'user'`) no banco de dados.
+   - Valida o estado: se a conversa estiver com status `HUMAN`, o worker suspende o processamento e não chama a IA.
+   - Dispara a mensagem para a API Python (`http://localhost:8000/webhook`).
+   - Recebe a resposta e, se o agente sinalizou transbordo, atualiza `Conversation.status = 'HUMAN'`.
+   - Grava a réplica na tabela `Message` (`role: 'assistant'`).
+   - Dispara a mensagem de volta para o cliente via Evolution API (`sendMessage`).
+3. **Bull Board**: Painel de telemetria operacional disponível na rota autenticada `/admin/queues`, permitindo visualizar filas ativas, tempos de espera, taxa de processamento e reprocessar jobs falhos com 1 clique.
 
-- **Business**: Entidade raiz. Uma clínica/empresa (`name`, `evolutionInstanceName`, `ownerPhone`).
-- **User**: Funcionários/Administradores associados a um `Business`.
-- **Service**: Procedimentos oferecidos pela clínica (`name`, `durationInMinutes`, `price`).
-- **Document**: Arquivos carregados para treinamento da IA (`filename`, `storageUrl`).
-- **DocumentChunk**: Pedaços do documento vetorizados. Campo crítico: `embedding Unsupported("vector(384)")`.
-- **Conversation**: Agrupa mensagens de um paciente (`clientPhone`, `status` [BOT ou HUMAN]).
-- **Message**: Armazena as falas (`role` [user ou assistant], `content`).
-- **Appointment**: Agendamentos realizados (`clientName`, `date`, `status`, FK de `Service`).
+---
+
+## 6. Sincronização Multi-Tenant com Google Sheets / ERP
+
+O sistema resolve o desafio de integrar múltiplos clientes sem a necessidade de criar credenciais OAuth2 individuais ou configurar servidores dedicados para cada clínica.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente as Paciente / IA
+    participant Backend as NestJS (AppointmentsService)
+    participant Webhooks as WebhooksService
+    participant Hub as Google Apps Script Hub
+    participant SheetA as Planilha Clínica A
+    participant SheetB as Planilha Clínica B
+
+    Cliente->>Backend: Confirmação de Agendamento
+    Backend->>Backend: Salva Appointment no PostgreSQL
+    Backend->>Webhooks: dispatchAppointmentCreated(appointment)
+    Webhooks->>Webhooks: Localiza business.googleSheetsId
+    Webhooks->>Hub: POST /exec { spreadsheetId, data, service, clientName, clientPhone }
+    alt Clínica A (ID: 1-zbGz0D...)
+        Hub->>SheetA: appendRow([Data, Hora, Paciente, Telefone, Serviço, Preço, Status])
+    else Clínica B (ID: 14j1ZTK...)
+        Hub->>SheetB: appendRow([Data, Hora, Paciente, Telefone, Serviço, Preço, Status])
+    end
+    Hub-->>Webhooks: HTTP 200 { success: true, updatedRange: "A4:G4" }
+```
+
+### Características do Hub Multi-Tenant:
+- **Zero Configuração de Credenciais pelo Usuário**: O administrador da clínica apenas cola o link ou ID da sua planilha no painel do Klinik OS (`/dashboard`).
+- **Detecção Inteligente de Link**: O frontend e o backend aceitam tanto o ID puro quanto a URL completa (`https://docs.google.com/spreadsheets/d/.../edit`), extraindo o hash via Regex.
+- **Roteamento Dinâmico**: O payload enviado ao Hub contém a chave `spreadsheetId`, garantindo isolamento total dos dados de agendamento entre clínicas.
+- **Gatilhos Duplos**: O despacho para a planilha ocorre tanto quando a IA executa a ferramenta `fechar_agendamento` quanto quando o gestor confirma um agendamento manualmente pelo Dashboard.
+
+---
+
+## 7. Modelagem do Banco de Dados (PostgreSQL + pgvector)
+
+O banco de dados relacional utiliza o **Prisma ORM** com a extensão nativa `vector` para buscas por similaridade semântica.
 
 ```mermaid
 erDiagram
-    Business ||--o{ User : contains
-    Business ||--o{ Service : offers
-    Business ||--o{ Document : stores
-    Document ||--|{ DocumentChunk : chunks
-    Business ||--o{ Conversation : tracks
-    Conversation ||--|{ Message : contains
-    Business ||--o{ Appointment : manages
+    Business ||--o{ User : possui
+    Business ||--o{ Service : cataloga
+    Business ||--o{ Document : armazena
+    Document ||--|{ DocumentChunk : divide
+    Business ||--o{ Conversation : registra
+    Conversation ||--|{ Message : historico
+    Business ||--o{ Appointment : agenda
+    Service ||--o{ Appointment : refere
+
+    Business {
+        string id PK
+        string name
+        string evolutionInstanceName UK
+        string ownerPhone
+        string googleSheetsId
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    User {
+        string id PK
+        string email UK
+        string businessId FK
+        string role
+    }
+
+    Service {
+        string id PK
+        string businessId FK
+        string name
+        string description
+        int durationInMinutes
+        float price
+    }
+
+    Document {
+        string id PK
+        string businessId FK
+        string filename
+        string storageUrl
+    }
+
+    DocumentChunk {
+        string id PK
+        string documentId FK
+        string content
+        vector_384 embedding "Vetor 384d (pgvector)"
+    }
+
+    Conversation {
+        string id PK
+        string businessId FK
+        string clientPhone
+        string status "BOT | HUMAN"
+        datetime updatedAt
+    }
+
+    Message {
+        string id PK
+        string conversationId FK
+        string role "user | assistant"
+        text content
+        datetime createdAt
+    }
+
+    Appointment {
+        string id PK
+        string businessId FK
+        string serviceId FK
+        string clientName
+        string clientPhone
+        datetime date
+        string status "PENDING | CONFIRMED | CANCELLED"
+    }
 ```
 
----
-
-## 9. Autenticação e autorização
-
-- **Provedor:** Supabase Auth (verificado no Frontend `package.json` e `AuthProvider.tsx`).
-- O Frontend gerencia o ciclo de vida do usuário via contexto (`AuthProvider`). 
-- Proteção de Rotas: O Next.js provavelmente verifica a existência da sessão ativa para liberar o acesso ao `/dashboard`.
-- **No Backend:**
-  > ⚠️ **Hipótese baseada na implementação**: O backend implementa Guards (NestJS) globais ou por rota, onde extrai o token JWT enviado no Header da requisição, valida sua assinatura (possivelmente via JWKS do Supabase) e identifica o usuário e seu `businessId` para segregar dados (Multi-tenant).
-
----
-
-## 10. Regras de negócio
-
-- **Isolamento de Dados (Multi-tenancy)**: Todas as tabelas principais possuem `businessId`. Nenhum dado de contexto, serviço ou histórico vaza entre diferentes clínicas.
-- **RAG (Retrieval-Augmented Generation)**:
-  - O Bot tenta responder apenas usando informações limitadas a 3 *chunks* do banco de dados + Serviços ativos.
-  - **Transbordo Humano**: O modelo de IA avalia a chave de saída estruturada `needsHumanFallback`. Se o cliente pede algo fora de contexto ou quer falar com um atendente, o bot muda o fluxo (status de `Conversation` de BOT para HUMAN) e notifica o painel.
-- **Intenção de Agendamento**:
-  - A IA é orientada pelo prompt a forçar a coleta de: **Nome, Serviço e Data/Hora**.
-  - Somente quando todos esses dados são preenchidos o retorno da IA conterá `isComplete: true`. 
-  - *(Inferência)* Quando `isComplete` é verdadeiro, o Backend dispara a criação de um registro na tabela `Appointment`.
+### Detalhes Estruturais:
+- **`DocumentChunk.embedding`**: Armazenado como tipo vetorial `vector(384)`. A busca é realizada via SQL Raw utilizando o operador de distância de cosseno (`<=>`):
+  ```sql
+  SELECT id, content, (embedding <=> $1::vector) AS distance
+  FROM "DocumentChunk"
+  WHERE "documentId" IN (SELECT id FROM "Document" WHERE "businessId" = $2)
+  ORDER BY distance ASC
+  LIMIT 3;
+  ```
+- **`Conversation` e `Message`**: Cada contato do WhatsApp tem suas mensagens gravadas com carimbo de tempo, permitindo auditoria, reconstituição de contexto e controle de transbordo (`status = 'HUMAN'`).
 
 ---
 
-## 11. Integrações externas
+## 8. Frontend e Experiência do Usuário (Next.js)
 
-1. **Evolution API**: 
-   - Gerencia sessões de WhatsApp.
-   - Usado no backend módulo `/whatsapp`.
-2. **Groq / Llama / Qwen**: 
-   - Provedor do LLM. Oferece alta velocidade de inferência. Utilizado em `chat.service.ts` com a chave `GROQ_API_KEY`.
-3. **Supabase**: 
-   - Utilizado no Frontend para Gestão de Sessões de Usuários (Login/Senha).
+O painel administrativo foi projetado com estética clínica premium, utilizando tipografia moderna e feedback visual em tempo real.
 
----
+### Mapeamento das Páginas do Dashboard:
 
-## 12. Webhooks, eventos e processamento assíncrono
-
-- O sistema é altamente dependente do Webhook `/whatsapp/webhook`.
-- O ciclo de vida de uma mensagem depende desse webhook, que enfileira/processa requisições sincronicamente na atual arquitetura, atualizando registros no PostgreSQL.
+| Rota | Descrição | Recursos Principais |
+|---|---|---|
+| `/dashboard` | **Visão Geral & Integrações** | Card de configuração da Planilha Google Sheets (suporta ID e URL), alertas de WhatsApp administrativo e status do workspace. |
+| `/dashboard/appointments` | **Agendamentos** | Listagem de agendamentos, aprovação/cancelamento com 1 clique e botão de atalho **"📊 Abrir no Google Sheets ↗"**. |
+| `/dashboard/whatsapp` | **Conexão WhatsApp** | Watchdog em tempo real do túnel Evolution API, exibição e auto-refresh de QR Code a cada 12 segundos e botão "⚡ Gerar do Zero". |
+| `/dashboard/chat-test` | **Depurador Multiagente** | Ambiente de simulação de conversa em tempo real, com badges visuais da intenção detectada (`[VENDAS]`, `[DUVIDAS]`, `[RECLAMACAO]`, `[HUMAN]`). |
+| `/dashboard/documents/new` | **Base de Conhecimento** | Upload e processamento de arquivos PDF com extração automática de texto, chunking e vetorização no pgvector. |
+| `/dashboard/services/new` | **Serviços Clínicos** | Cadastro e precificação dos procedimentos oferecidos pelo estabelecimento. |
 
 ---
 
-## 13. Configuração e ambiente
+## 9. Observabilidade e Métricas de Produção
 
-Variáveis críticas (`.env`):
-```env
-DATABASE_URL=postgresql://user:pass@host/klinik?schema=public
-DIRECT_URL=postgresql://user:pass@host/klinik?schema=public
-GROQ_API_KEY=gsk_...
-PORT=3001
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-```
+O Klinik OS possui telemetria integrada para monitoramento de SLA, saúde de filas e latência de inteligência artificial:
+
+1. **Prometheus Metrics**:
+   - **Backend NestJS**: Métricas de requisições HTTP, tempos de resposta e contadores em `http://localhost:3001/metrics`.
+   - **Microsserviço Python**: Instrumentação automática de latência de inferência dos nós do LangGraph em `http://localhost:8000/metrics`.
+2. **Logs Estruturados (Winston + Loki)**:
+   - Configuração pronta para envio de logs estruturados em JSON para o Grafana Loki, permitindo rastrear o ciclo de vida completo de uma mensagem pelo seu `trace_id` ou telefone do cliente.
+3. **Bull Board**:
+   - Interface visual para monitoramento do throughput de mensagens do WhatsApp e latência da fila em `http://localhost:3001/admin/queues`.
 
 ---
 
-## 14. Execução local
+## 10. Guia de Execução Local (Ambiente de Desenvolvimento)
 
-### Pré-requisitos
+### 10.1. Pré-requisitos
 - Node.js >= 20, NPM
-- Docker e Docker Compose (para banco de dados e pgvector)
+- Python >= 3.10 com ambiente virtual (`venv`)
+- Docker & Docker Compose
 
-### Banco de dados
-Na raiz do `/backend`:
-```bash
-docker-compose up -d
-npx prisma generate
-npx prisma db push
-# Se existir, rodar seed para carregar os usuários admin
-npx prisma db seed
-```
-
-### Backend
+### 10.2. Subindo a Infraestrutura (Docker)
+Na pasta raiz do projeto ou em `backend/`:
 ```bash
 cd backend
-npm install
+docker compose up -d
+```
+Isso iniciará:
+- **PostgreSQL 15** (Porta 5432) com extensão `pgvector` e bancos `klinik` e `evolution` criados.
+- **Redis 7** (Porta 6379) para filas do BullMQ.
+- **Evolution API v2** (Porta 8080) com engine Baileys pronta para conexão com WhatsApp.
+
+### 10.3. Configurando o Banco de Dados
+```bash
+cd backend
+npx prisma db push
+```
+
+### 10.4. Executando os Microsserviços
+Em terminais separados:
+
+**1. Microsserviço de IA (Python LangGraph):**
+```bash
+# Na raiz do projeto:
+.\ai_agent\venv\Scripts\python -m uvicorn main:app --app-dir ai_agent --host 0.0.0.0 --port 8000 --reload
+```
+
+**2. Backend Core (NestJS):**
+```bash
+cd backend
 npm run start:dev
 ```
+*Acessível em `http://localhost:3001` (Bull Board em `/admin/queues`, Métricas em `/metrics`).*
 
-### Frontend
+**3. Frontend (Next.js):**
 ```bash
 cd frontend
-npm install
 npm run dev
 ```
-Acesse `http://localhost:3000`. O backend roda em `http://localhost:3001`.
+*Acessível em `http://localhost:3000`.*
 
 ---
 
-## 15. Testes
+## 11. Testes Automatizados e Qualidade de Código (TDD)
 
-- O backend foi gerado com os artefatos de teste do NestJS (ex: `chat.service.spec.ts`, `app.controller.spec.ts`).
-- Para executar os testes no backend: `npm run test` (unitários) ou `npm run test:e2e` (Integração).
-- Não há configuração explícita de testes mapeada no frontend (Jest/Cypress).
+O backend possui suíte abrangente de testes unitários desenvolvida em Jest, cobrindo controllers, serviços e o processador assíncrono de mensagens.
 
----
-
-## 16. Deploy e infraestrutura
-
-- **Banco de Dados**: O banco precisa ter a extensão `pgvector` ativa (como Supabase Postgres ou uma instância customizada na AWS/Render).
-- **Backend**: Compilável via `npm run build` (`dist/main.js`). Pode ser hospedado no Render, Railway ou AWS ECS.
-- **Frontend**: Aplicação Next.js pronta para Vercel.
-
----
-
-## 17. Dependências
-
-| Dependência (Backend) | Versão | Finalidade |
-|---|---|---|
-| `@nestjs/core`, `common` | ^11.0.1 | Framework Web e API |
-| `@prisma/client` | ^5.22.0 | ORM de comunicação com o DB |
-| `@langchain/groq`, `core` | ^1.3.1 | Orquestração da IA e Inferência |
-| `@xenova/transformers` | ^2.17.2 | Execução de modelos de IA de Embeddings locais no Node.js |
-
-| Dependência (Frontend) | Versão | Finalidade |
-|---|---|---|
-| `next` | 16.3.5 | Framework React |
-| `tailwindcss` | ^4 | Sistema de Grid e Utility classes |
-| `@supabase/supabase-js`| ^2.116 | Autenticação no Client |
-
----
-
-## 18. Pontos críticos e riscos técnicos
-
-- 🔴 **Performance de Embeddings em Node.js**: O uso de `@xenova/transformers` (`Xenova/all-MiniLM-L6-v2`) realiza a vetorização matemática *dentro do processo Node.js* (Event Loop). Em alto volume de requisições webhooks simultâneas, isso irá bloquear o CPU e travar a aplicação, derrubando o servidor NestJS.
-- 🟡 **Filas e Concorrência**: Webhooks do WhatsApp podem chegar aos milhares. Atualmente o Controller processa tudo sincronamente. Se o Groq demorar a responder, o Webhook da Evolution API pode sofrer Timeouts.
-- 🟡 **Ausência de Paginação em Históricos**: O banco busca histórico no Prisma sem paginação controlada para interface, embora para o RAG exista o `take: 6`.
-- 🟢 **Dependência do Groq**: O limite gratuito de requisições por minuto na API Groq pode ser facilmente estourado no modelo em produção (Rate Limiting).
-
----
-
-## 19. Melhorias recomendadas
-
-### 🔴 Alta prioridade
-- **Implementar Message Broker (Fila)**: Utilizar BullMQ ou RabbitMQ para recepcionar webhooks e enfileirar a interação da IA, evitando que o NestJS perca requisições.
-- **Desacoplar Embeddings Locais**: Substituir a geração de embeddings via Xenova Node.js por um serviço de terceiros rápido (como OpenAI Text-Embedding-3-small) para não sufocar a CPU da API.
-
-### 🟡 Média prioridade
-- **Tratamento de Rate Limit de IA**: Adicionar um mecanismo de *Retry* exponencial no Langchain (atualmente o código falha via fallback se o Groq cair).
-
-### 🟢 Baixa prioridade
-- **Implementação de testes E2E**: Testar os fluxos com simulação de payloads do webhook da Evolution API.
-
----
-
-## 20. Mapa geral do sistema
-
-```text
-SISTEMA KLINIK OS
-│
-├── Frontend (Next.js)
-│   ├── Componentes Globais (Header, Auth)
-│   ├── Login
-│   └── Dashboard
-│       ├── Appointments (Agendamentos)
-│       ├── Services (Serviços)
-│       ├── Documents (Documentos/RAG)
-│       └── Whatsapp Configs
-│
-├── Backend (NestJS)
-│   ├── Módulo de Autenticação / Usuários
-│   ├── Módulo de Negócios (Business, Services, Appointments)
-│   ├── Módulo de IA (Chat, RAG)
-│   └── Módulo de Integração (WhatsApp Evolution API)
-│
-├── Database (Prisma Postgres)
-│   ├── Dados Relacionais
-│   └── Dados Vetoriais (pgvector)
-│
-└── Infraestrutura / APIs
-    ├── Evolution API (Envio e Recebimento)
-    └── Groq (Inferência de IA)
+### Executando os Testes:
+```bash
+cd backend
+npm test
 ```
 
+### Resultados da Suíte de Testes:
+```text
+Test Suites: 11 passed, 11 total
+Tests:       51 passed, 51 total
+Snapshots:   0 total
+Time:        13.735 s
+Ran all test suites.
+```
+
+**Principais Cenários Testados:**
+- **`WhatsappProcessor`**: Persistência de mensagens no banco, criação de `Conversation`, chamada ao agente Python com `tenant_id` real, despacho de mensagens de retorno e bloqueio de bot em modo `HUMAN`.
+- **`BusinessService`**: Gestão de multi-tenancy e atualização do `googleSheetsId`.
+- **`WebhooksService`**: Disparo HTTP formatado para o Google Apps Script Hub com dados de agendamento.
+- **`AppointmentsService` & `AppointmentsController`**: Ciclo de vida completo do agendamento e sincronização com ERP.
+- **`ChatService`**: Vetorização, RAG e extração de contexto estruturado.
+- **`WhatsappService`**: Gerenciamento de instâncias na Evolution API (conexão, desconexão, status).
+
 ---
 
-## 21. Glossário
+## 12. Glossário de Engenharia
 
-- **RAG (Retrieval-Augmented Generation)**: Técnica que provê informações externas ao modelo de IA antes dele gerar a resposta, garantindo que ele não tenha "alucinações" sobre regras da clínica.
-- **PgVector**: Extensão do PostgreSQL que permite realizar buscas de similaridade por distância matemática entre frases.
-- **Embedding / Chunking**: O ato de quebrar um texto longo em partes e transformar essas partes num array de números que representa o significado da frase.
-- **Groq**: Provedor de cloud especializado em rodar LLMs (como o Llama e o Qwen) em altíssima velocidade graças as suas NPUs customizadas.
-- **Evolution API**: Uma plataforma open source famosa por emular o comportamento do WhatsApp Web via API para uso de chatbots.
+- **LangGraph**: Framework de orquestração de LLMs baseado em grafos de estados cíclicos, possibilitando fluxos multiagentes e intervenção humana controlada.
+- **BullMQ**: Biblioteca de mensageria baseada em Redis para o ecossistema Node.js, garantindo execução assíncrona, tolerância a falhas e controle de concorrência.
+- **pgvector**: Extensão C para PostgreSQL que implementa armazenamento nativo de vetores multidimensionais e busca de vizinhos mais próximos (KNN) por cosseno ou distância euclidiana.
+- **Multi-Tenancy**: Padrão de arquitetura onde uma única instância do sistema atende múltiplos clientes isolados, garantindo que regras de negócio, dados e planilhas de uma empresa nunca vazem para outra.
+- **SPIN Selling**: Metodologia comercial que investiga Situação, Problema, Implicação e Necessidade de Solução, adotada no prompt do `sales_agent`.
+- **Human Handoff (Transbordo)**: Mecanismo onde o agente autônomo detecta que o cliente precisa de atenção humana ou expressa insatisfação crítica, pausando a IA e alertando a equipe de atendimento.
 
 ---
-*Gerado por análise automatizada do ecossistema do projeto.*
+*Documentação técnica oficial do Klinik OS — Atualizada para a arquitetura Multiagente & Enterprise.*

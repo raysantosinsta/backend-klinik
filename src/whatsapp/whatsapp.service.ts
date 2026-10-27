@@ -10,11 +10,8 @@ export class WhatsappService {
   ) {}
 
   private getEvoConfig() {
-    const evoUrl = process.env.EVOLUTION_API_URL;
-    const evoKey = process.env.EVOLUTION_API_KEY;
-    if (!evoUrl || !evoKey) {
-      throw new Error('Credenciais do Evolution API não configuradas no .env.');
-    }
+    const evoUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+    const evoKey = process.env.EVOLUTION_API_KEY || 'minha_chave_super_secreta_123';
     return { evoUrl, evoKey };
   }
 
